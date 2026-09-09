@@ -1,4 +1,5 @@
-streamlit>=1.28.0
+Flask>=3.0.0
+gunicorn>=21.0.0
 pandas>=2.0.0
 networkx>=3.0
 pyvis>=0.3.2

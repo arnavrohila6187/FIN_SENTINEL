@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinSentinel // Graph Intelligence Engine</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        
+        :root {
+            --bg-void: #080c14;
+            --bg-card: rgba(13, 21, 39, 0.7);
+            --border-glass: rgba(51, 65, 85, 0.5);
+            --cyan: #00e5ff;
+            --green: #00ff88;
+            --red: #ff0055;
+            --text-main: #c8d6ef;
+            --text-dim: #5a7090;
+            --font-mono: 'Share Tech Mono', 'Courier New', Consolas, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-void);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background-image: radial-gradient(circle at center, rgba(0,229,255,0.05) 0%, transparent 70%);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border-glass);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 5px 0 20px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .sidebar-header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-glass);
+            padding-bottom: 1rem;
+        }
+
+        .sidebar-header h1 {
+            color: var(--green);
+            font-size: 1.5rem;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        .sidebar-header p {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+        }
+
+        .control-group {
+            margin-bottom: 2rem;
+        }
+
+        .control-group label {
+            display: block;
+            color: var(--cyan);
+            font-size: 0.9rem;
+            margin-bottom: 0.8rem;
+            letter-spacing: 0.1em;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--cyan);
+        }
+
+        .range-value {
+            text-align: right;
+            color: var(--green);
+            font-size: 1.2rem;
+            margin-top: 0.5rem;
+        }
+
+        .btn-run {
+            background: rgba(0, 229, 255, 0.1);
+            color: var(--cyan);
+            border: 1px solid var(--cyan);
+            padding: 1rem;
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-top: auto;
+        }
+
+        .btn-run:hover {
+            background: var(--cyan);
+            color: var(--bg-void);
+            box-shadow: 0 0 15px var(--cyan);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        /* Top Bar / KPIs */
+        .kpi-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            backdrop-filter: blur(8px);
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(0, 229, 255, 0.4);
+        }
+
+        .kpi-label {
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 0.5rem;
+        }
+
+        .kpi-value {
+            color: var(--cyan);
+            font-size: 2.2rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+        }
+
+        .kpi-card.alert .kpi-value {
+            color: var(--red);
+            text-shadow: 0 0 10px rgba(255, 0, 85, 0.3);
+        }
+
+        /* Canvas Area */
+        .canvas-wrapper {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        .canvas-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-glass);
+            color: var(--green);
+            font-size: 0.9rem;
+            letter-spacing: 0.1em;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #graph-canvas {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background-color: transparent;
+        }
+
+        .loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 229, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--cyan);
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loader-text {
+            color: var(--cyan);
+            letter-spacing: 0.2em;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>🛡️ FINSENTINEL</h1>
+            <p>GRAPH INTELLIGENCE ENGINE</p>
+        </div>
+
+        <div class="control-group">
+            <label for="risk-slider">MINIMUM RISK THRESHOLD</label>
+            <input type="range" id="risk-slider" min="0" max="100" value="50">
+            <div class="range-value" id="risk-display">50</div>
+        </div>
+
+        <button class="btn-run" id="btn-run">Run Analytics</button>
+    </aside>
+
+    <main class="main-content">
+        <div class="kpi-container">
+            <div class="kpi-card">
+                <div class="kpi-label">Total Transactions</div>
+                <div class="kpi-value" id="kpi-total">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Flagged High-Risk</div>
+                <div class="kpi-value" id="kpi-flagged">0</div>
+            </div>
+            <div class="kpi-card alert">
+                <div class="kpi-label">Mule Rings Detected</div>
+                <div class="kpi-value" id="kpi-rings">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Engine Status</div>
+                <div class="kpi-value" style="color: var(--green);">ONLINE</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <div class="canvas-header">
+                <span>// LIVE TRANSACTION NETWORK</span>
+                <span id="canvas-status">AWAITING EXECUTION</span>
+            </div>
+            
+            <div class="loader" id="loader">
+                <div class="spinner"></div>
+                <div class="loader-text">ANALYZING TOPOLOGY...</div>
+            </div>
+
+            <iframe id="graph-canvas" srcdoc="<div style='color:#5a7090;font-family:monospace;padding:2rem;text-align:center;'>System ready. Configure parameters and execute run.</div>"></iframe>
+        </div>
+    </main>
+
+    <script>
+        const slider = document.getElementById('risk-slider');
+        const display = document.getElementById('risk-display');
+        const btnRun = document.getElementById('btn-run');
+        const iframe = document.getElementById('graph-canvas');
+        const loader = document.getElementById('loader');
+        const statusText = document.getElementById('canvas-status');
+
+        slider.addEventListener('input', (e) => {
+            display.textContent = e.target.value;
+        });
+
+        btnRun.addEventListener('click', async () => {
+            const minRisk = slider.value;
+            
+            // UI State updates
+            btnRun.disabled = true;
+            btnRun.style.opacity = '0.5';
+            iframe.style.opacity = '0.2';
+            loader.style.display = 'flex';
+            statusText.textContent = 'PROCESSING...';
+            statusText.style.color = 'var(--cyan)';
+
+            try {
+                const response = await fetch('/api/graph', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ min_risk: minRisk })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Update KPIs
+                    document.getElementById('kpi-total').textContent = data.metrics.total;
+                    document.getElementById('kpi-flagged').textContent = data.metrics.flagged;
+                    document.getElementById('kpi-rings').textContent = data.metrics.rings;
+
+                    // Inject HTML into iframe
+                    iframe.srcdoc = data.html;
+                    
+                    statusText.textContent = 'ANALYSIS COMPLETE';
+                    statusText.style.color = 'var(--green)';
+                } else {
+                    throw new Error(data.error || 'Unknown error occurred');
+                }
+
+            } catch (error) {
+                console.error('Failed to fetch graph data:', error);
+                statusText.textContent = 'ERROR ENCOUNTERED';
+                statusText.style.color = 'var(--red)';
+                iframe.srcdoc = `<div style="color:#ff0055;font-family:monospace;padding:2rem;">Fatal Error: ${error.message}</div>`;
+            } finally {
+                // Restore UI state
+                btnRun.disabled = false;
+                btnRun.style.opacity = '1';
+                iframe.style.opacity = '1';
+                loader.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
