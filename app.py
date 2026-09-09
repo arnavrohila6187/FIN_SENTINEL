@@ -234,11 +234,19 @@ def section_header(text: str, color: str = "#00e5ff") -> str:
 # Data Layer — cloud-safe absolute path resolution
 # ────────────────────────────────────────────────────────────────────────────
 
-# Resolve the CSV path relative to this source file so the app works
-# regardless of the working directory (local dev, Streamlit Cloud, Docker).
-_HERE      = Path(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR   = _HERE / "data"
-DATA_PATH  = DATA_DIR / "transactions.csv"
+# Guard: __file__ is defined when Streamlit runs the script normally.
+# On some cloud runners the module context differs; fall back to sys.argv[0].
+try:
+    _THIS_FILE = os.path.abspath(__file__)
+except NameError:
+    _THIS_FILE = os.path.abspath(sys.argv[0])
+
+_HERE     = Path(os.path.dirname(_THIS_FILE))
+DATA_DIR  = _HERE / "data"
+DATA_PATH = DATA_DIR / "transactions.csv"
+
+# Ensure the data directory always exists (guards against missing git-tracked dir)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ── Inline data generator (no subprocess, no file-system side-effects) ────
@@ -315,13 +323,23 @@ def _generate_csv_inline(path: Path) -> None:
 @st.cache_data(show_spinner=False)
 def load_data() -> pd.DataFrame:
     """
-    Load the transaction dataset.  If the CSV is absent (fresh cloud
-    deployment), generate it in-process — no subprocess or extra
-    filesystem permissions required.
+    Load the transaction dataset. Generates it in-process if absent or
+    unreadable — no subprocess or external permissions required.
+    Safe for Streamlit Cloud, Docker, and local dev.
     """
+    # Always regenerate if missing
     if not DATA_PATH.exists():
         _generate_csv_inline(DATA_PATH)
-    df = pd.read_csv(str(DATA_PATH), parse_dates=["timestamp"])
+
+    # Wrap read in try/except: regenerate if the file is corrupt/empty
+    try:
+        df = pd.read_csv(str(DATA_PATH), parse_dates=["timestamp"])
+        if df.empty or "sender_id" not in df.columns:
+            raise ValueError("CSV schema invalid")
+    except Exception:
+        _generate_csv_inline(DATA_PATH)
+        df = pd.read_csv(str(DATA_PATH), parse_dates=["timestamp"])
+
     df["amount_inr"] = df["amount_inr"].astype(float)
     return df
 
@@ -329,22 +347,26 @@ def load_data() -> pd.DataFrame:
 # ────────────────────────────────────────────────────────────────────────────
 # Graph Engine — Build
 # ────────────────────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
-def build_graph(df: pd.DataFrame) -> nx.DiGraph:
+# nx.DiGraph is not pickle-serialisable, so @st.cache_data (which uses
+# pickle) will throw UnhashableTypeError on Streamlit Cloud.
+# @st.cache_resource caches by object identity — correct for graphs.
+@st.cache_resource(show_spinner=False)
+def build_graph(df_hash: int, _df: pd.DataFrame) -> nx.DiGraph:
     """
     Construct a directed graph where every unique account ID is a node
     and every transaction row becomes a weighted directed edge.
-    Edge attributes stored: amount_inr, timestamp, txn_id, device_fingerprint.
+    df_hash is the cache key (hash of the DataFrame); _df is the actual
+    data (underscore prefix tells Streamlit not to hash this argument).
     """
     G = nx.DiGraph()
-    for _, row in df.iterrows():
+    for _, row in _df.iterrows():
         G.add_edge(
             row["sender_id"],
             row["receiver_id"],
-            amount      = row["amount_inr"],
-            timestamp   = str(row["timestamp"]),
-            txn_id      = row["txn_id"],
-            device      = row["device_fingerprint"],
+            amount    = row["amount_inr"],
+            timestamp = str(row["timestamp"]),
+            txn_id    = row["txn_id"],
+            device    = row["device_fingerprint"],
         )
     return G
 
@@ -691,7 +713,7 @@ def main() -> None:
     with st.spinner("🔄  Loading transaction dataset…"):
         df = load_data()
 
-    G            = build_graph(df)
+    G            = build_graph(pd.util.hash_pandas_object(df).sum(), df)
     cycles       = detect_cycles(G, min_cycle_len=3)
     smurf_flags  = detect_smurfing(df)
     linkage      = detect_entity_linkage(df)

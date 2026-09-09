@@ -1,0 +1,2 @@
+# This file ensures the data/ directory is tracked by git.
+# transactions.csv is generated at runtime by app.py if absent.
