@@ -16,15 +16,15 @@ renders an interactive PyVis network inside the Cyberpunk SOC dashboard.
 # ────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
+import csv
 import io
 import os
-import subprocess
+import random
 import sys
 import tempfile
-import textwrap
-import time
+import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import networkx as nx
@@ -37,7 +37,7 @@ from pyvis.network import Network
 # Page Config  (must be FIRST Streamlit call)
 # ────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="FinSentinel // Graph Engine",
+    page_title="FinSentinel // Financial Crime Intelligence",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -144,11 +144,11 @@ def html_header() -> str:
         <div style="font-size:1.8rem; font-weight:700; color:#00ff88;
                     text-shadow:0 0 12px #00ff88, 0 0 24px #00ff8855;
                     font-family:'Share Tech Mono',monospace; letter-spacing:0.06em;">
-          🛡️&nbsp; FINSENTINEL &nbsp;//&nbsp; GRAPH INTELLIGENCE ENGINE
+          &#x1F6E1;&#xFE0F;&nbsp; FINSENTINEL &nbsp;//&nbsp; GRAPH INTELLIGENCE ENGINE
         </div>
         <div style="font-size:0.78rem; color:#5a7090; letter-spacing:0.12em; margin-top:4px;">
-          AML &amp; FINANCIAL CRIME DETECTION &nbsp;|&nbsp; PROBLEM STATEMENT 5 &nbsp;|&nbsp;
-          BUILD $&#xB7;BANK HACKATHON
+          AML &amp; FINANCIAL CRIME DETECTION &nbsp;|&nbsp; GRAPH-BASED TRANSACTION ANALYTICS
+          &nbsp;|&nbsp; ENTERPRISE COMPLIANCE PLATFORM
         </div>
       </div>
       <div style="text-align:right;">
@@ -231,17 +231,97 @@ def section_header(text: str, color: str = "#00e5ff") -> str:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Data Layer
+# Data Layer — cloud-safe absolute path resolution
 # ────────────────────────────────────────────────────────────────────────────
-DATA_PATH = Path("data/transactions.csv")
+
+# Resolve the CSV path relative to this source file so the app works
+# regardless of the working directory (local dev, Streamlit Cloud, Docker).
+_HERE      = Path(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR   = _HERE / "data"
+DATA_PATH  = DATA_DIR / "transactions.csv"
+
+
+# ── Inline data generator (no subprocess, no file-system side-effects) ────
+def _generate_csv_inline(path: Path) -> None:
+    """
+    Generates synthetic transaction data entirely in-process.
+    Mirrors the logic in generate_data.py so no external script call
+    is needed — critical for cloud deployments where subprocess may be
+    blocked or the working-directory context is unknown.
+    """
+    random.seed(42)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    BASE_TIME       = datetime(2024, 6, 1, 9, 0, 0)
+    NORMAL_ACCOUNTS = [f"ACC_{i:04d}" for i in range(1, 201)]
+    NORMAL_DEVICES  = [f"DEV_{i:05d}" for i in range(1, 5001)]
+
+    def txn(sender, receiver, amount, ts, device):
+        return {"txn_id": str(uuid.uuid4()), "sender_id": sender,
+                "receiver_id": receiver, "amount_inr": round(amount, 2),
+                "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S"),
+                "device_fingerprint": device}
+
+    def rt(base, mins=1440):
+        return base + timedelta(minutes=random.randint(0, mins))
+
+    rows = []
+
+    # 3-hop loops (3 families × 3 edges = 9 rows)
+    for fam in [("MULE_A1","MULE_A2","MULE_A3"), ("MULE_B1","MULE_B2","MULE_B3"),
+                ("MULE_C1","MULE_C2","MULE_C3")]:
+        ts  = rt(BASE_TIME, 180)
+        dev = f"MULE_DEV_L3{fam[0][-2]}"
+        amt = random.uniform(50_000, 150_000)
+        for i in range(3):
+            rows.append(txn(fam[i], fam[(i+1)%3], amt*random.uniform(0.6,1.0),
+                           ts + timedelta(minutes=i*5), dev))
+
+    # 4-hop loop (4 rows)
+    loop4 = ("MULE_D1","MULE_D2","MULE_D3","MULE_D4")
+    ts    = rt(BASE_TIME, 200)
+    amt   = random.uniform(100_000, 200_000)
+    for i in range(4):
+        rows.append(txn(loop4[i], loop4[(i+1)%4], amt*random.uniform(0.55,1.0),
+                       ts + timedelta(minutes=i*8), "MULE_DEV_L4"))
+
+    # Smurfing: fan-out 8 + fan-in 8 = 16 rows
+    smurf_mules = [f"SMURF_{i:02d}" for i in range(1, 9)]
+    ts_fo = rt(BASE_TIME, 30)
+    for i, m in enumerate(smurf_mules):
+        rows.append(txn("MULE_ORIGIN", m, random.uniform(4_000, 9_999),
+                       ts_fo + timedelta(seconds=i*45), "MULE_DEV_SMURF"))
+    ts_fi = ts_fo + timedelta(minutes=20)
+    for i, m in enumerate(smurf_mules):
+        rows.append(txn(m, "MULE_AGG", random.uniform(4_000, 9_999),
+                       ts_fi + timedelta(seconds=i*30), "MULE_DEV_SMURF"))
+
+    # Normal noise to reach 500 total
+    while len(rows) < 500:
+        s, r = random.sample(NORMAL_ACCOUNTS, 2)
+        rows.append(txn(s, r, random.uniform(500, 49_999),
+                       rt(BASE_TIME, 2880), random.choice(NORMAL_DEVICES)))
+
+    random.shuffle(rows)
+
+    fields = ["txn_id","sender_id","receiver_id","amount_inr",
+              "timestamp","device_fingerprint"]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 @st.cache_data(show_spinner=False)
 def load_data() -> pd.DataFrame:
-    """Auto-generate data if CSV doesn't exist, then return as DataFrame."""
+    """
+    Load the transaction dataset.  If the CSV is absent (fresh cloud
+    deployment), generate it in-process — no subprocess or extra
+    filesystem permissions required.
+    """
     if not DATA_PATH.exists():
-        subprocess.run([sys.executable, "generate_data.py"], check=True)
-    df = pd.read_csv(DATA_PATH, parse_dates=["timestamp"])
+        _generate_csv_inline(DATA_PATH)
+    df = pd.read_csv(str(DATA_PATH), parse_dates=["timestamp"])
     df["amount_inr"] = df["amount_inr"].astype(float)
     return df
 
@@ -484,16 +564,29 @@ def build_pyvis(
     }
     """)
 
-    # Write to a temp file and read back as HTML string
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".html", delete=False, encoding="utf-8"
-    ) as f:
-        tmp_path = f.name
-    net.save_graph(tmp_path)
-    with open(tmp_path, encoding="utf-8") as f:
-        html_str = f.read()
-    os.unlink(tmp_path)
-    return html_str
+    # ── Safe HTML export: StringIO first, temp-file as fallback ──
+    # PyVis ≥ 0.3.2 exposes generate_html(); older builds only have
+    # save_graph(). We try the in-memory path first so the app works
+    # on read-only cloud file-systems without needing /tmp write access.
+    try:
+        html_str = net.generate_html()
+        return html_str
+    except AttributeError:
+        pass
+
+    # Fallback: write to a guaranteed-writable temp dir
+    try:
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".html")
+        os.close(tmp_fd)
+        net.save_graph(tmp_path)
+        with open(tmp_path, encoding="utf-8") as fh:
+            html_str = fh.read()
+        return html_str
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -827,9 +920,9 @@ def main() -> None:
         """<div style="margin-top:2.5rem; border-top:1px solid #334155;
                        padding-top:0.8rem; font-size:0.65rem; color:#334155;
                        text-align:center; letter-spacing:0.1em;">
-          FINSENTINEL v1.0 &nbsp;|&nbsp; BUILD $·BANK HACKATHON — PROBLEM STATEMENT 5
-          &nbsp;|&nbsp; GRAPH INTELLIGENCE ENGINE &nbsp;|&nbsp;
-          ALL DATA IS SYNTHETIC &amp; FOR DEMONSTRATION PURPOSES ONLY
+          FINSENTINEL v1.0 &nbsp;|&nbsp; ENTERPRISE AML &amp; FINANCIAL CRIME INTELLIGENCE
+          &nbsp;|&nbsp; GRAPH-BASED TRANSACTION ANALYTICS &nbsp;|&nbsp;
+          SIMULATED DATA &mdash; FOR DEMONSTRATION PURPOSES ONLY
         </div>""",
         unsafe_allow_html=True,
     )
