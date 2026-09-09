@@ -1,4 +1,4 @@
-﻿"""
+"""
 FinSentinel — Enterprise AML & Financial Crime Intelligence Dashboard
 =====================================================================
 Cloud-stable Streamlit application.
@@ -492,163 +492,189 @@ def main() -> None:
     st.markdown(CYBERPUNK_CSS, unsafe_allow_html=True)
     st.markdown(html_header(), unsafe_allow_html=True)
 
+    # ── Sidebar Navigation ────────────────────────────────────────────────
+    with st.sidebar:
+        st.markdown(section_header("CONTROL PANEL", "#00ff88"), unsafe_allow_html=True)
+        date_range = st.date_input("Date Range", [datetime(2024, 6, 1), datetime(2024, 6, 3)])
+        min_risk_score = st.slider("Minimum Risk Score Threshold", 0, 100, 85)
+        run_btn = st.button("Run Graph Analytics", type="primary", use_container_width=True)
+        st.markdown("<hr style='border-color:#334155;'>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.7rem; color:#5a7090;'>System configured for continuous monitoring.</div>", unsafe_allow_html=True)
+
     # ══════════════════════════════════════════════════════════════════════
     # CLOUD SAFETY NET: every execution line is inside try/except so that
     # any crash renders a detailed traceback on the frontend instead of the
     # generic "Oh no." Streamlit error screen.
     # ══════════════════════════════════════════════════════════════════════
     try:
-        with st.spinner("🔄  Loading transaction dataset…"):
-            df = load_data()
+        if "analyzed" not in st.session_state:
+            st.session_state.analyzed = True
 
-        G             = build_graph(pd.util.hash_pandas_object(df).sum(), df)
-        cycles        = detect_cycles(G, min_cycle_len=3)
-        smurf_flags   = detect_smurfing(df)
-        linkage       = detect_entity_linkage(df)
-        flagged_nodes = get_all_flagged_nodes(cycles, smurf_flags, linkage)
+        if run_btn:
+            st.session_state.analyzed = True
+            st.cache_data.clear()
+            st.cache_resource.clear()
 
-        flagged_edges: set[tuple] = set()
-        for cycle in cycles:
-            for i in range(len(cycle)):
-                flagged_edges.add((cycle[i], cycle[(i+1)%len(cycle)]))
-        for node, meta in smurf_flags.items():
-            for r in meta.get("receivers", []):
-                flagged_edges.add((node, r))
-            for s in meta.get("senders", []):
-                flagged_edges.add((s, node))
+        if st.session_state.analyzed:
+            with st.spinner("🔄  Loading transaction dataset…"):
+                df = load_data()
 
-        total_flagged_amount = df[
-            df["sender_id"].isin(flagged_nodes) | df["receiver_id"].isin(flagged_nodes)
-        ]["amount_inr"].sum()
+            G             = build_graph(pd.util.hash_pandas_object(df).sum(), df)
+            cycles        = detect_cycles(G, min_cycle_len=3)
+            smurf_flags   = detect_smurfing(df)
+            linkage       = detect_entity_linkage(df)
+            flagged_nodes = get_all_flagged_nodes(cycles, smurf_flags, linkage)
 
-        alerts_df = build_alerts_df(df, flagged_nodes, cycles, smurf_flags)
-        logs      = build_logs(len(df), G.number_of_nodes(), cycles, smurf_flags, linkage)
+            flagged_edges: set[tuple] = set()
+            for cycle in cycles:
+                for i in range(len(cycle)):
+                    flagged_edges.add((cycle[i], cycle[(i+1)%len(cycle)]))
+            for node, meta in smurf_flags.items():
+                for r in meta.get("receivers", []):
+                    flagged_edges.add((node, r))
+                for s in meta.get("senders", []):
+                    flagged_edges.add((s, node))
 
-        # ── KPI Banner ────────────────────────────────────────────────────
-        st.markdown(section_header("// THREAT INTELLIGENCE METRICS"), unsafe_allow_html=True)
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.markdown(kpi_card("TRANSACTIONS SCANNED", f"{len(df):,}","#00e5ff","in-memory dataset"), unsafe_allow_html=True)
-        with k2:
-            st.markdown(kpi_card("ACTIVE GRAPH NODES", f"{G.number_of_nodes():,}","#00e5ff","unique accounts"), unsafe_allow_html=True)
-        with k3:
-            chain_count = len(cycles) + (1 if smurf_flags else 0)
-            st.markdown(kpi_card("MULE CHAINS DETECTED", str(chain_count),"#ff0055","action required"), unsafe_allow_html=True)
-        with k4:
-            st.markdown(kpi_card("TOTAL RISK EXPOSURE", f"₹{total_flagged_amount:,.0f}","#ff0055","funds flagged for freeze"), unsafe_allow_html=True)
+            total_flagged_amount = df[
+                df["sender_id"].isin(flagged_nodes) | df["receiver_id"].isin(flagged_nodes)
+            ]["amount_inr"].sum()
 
-        st.markdown("<div style='margin-top:1.2rem;'></div>", unsafe_allow_html=True)
+            alerts_df = build_alerts_df(df, flagged_nodes, cycles, smurf_flags)
+            logs      = build_logs(len(df), G.number_of_nodes(), cycles, smurf_flags, linkage)
 
-        # ── Command Center ────────────────────────────────────────────────
-        st.markdown(section_header("// COMMAND CENTER — LIVE ANALYSIS"), unsafe_allow_html=True)
-        left_col, right_col = st.columns([1, 2])
+            # ── KPI Banner ────────────────────────────────────────────────────
+            st.markdown(section_header("// THREAT INTELLIGENCE METRICS"), unsafe_allow_html=True)
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                st.metric("Total Transactions Analyzed", f"{len(df):,}")
+            with k2:
+                st.metric("Active Graph Nodes", f"{G.number_of_nodes():,}")
+            with k3:
+                chain_count = len(cycles) + (1 if smurf_flags else 0)
+                st.metric("High-Risk Nodes", str(chain_count))
+            with k4:
+                st.metric("Flagged Accounts", f"{len(flagged_nodes):,}")
 
-        with left_col:
-            st.markdown(section_header("SYSTEM CONSOLE","#5a7090"), unsafe_allow_html=True)
-            st.markdown(terminal_box(logs), unsafe_allow_html=True)
+            st.markdown("<div style='margin-top:1.2rem;'></div>", unsafe_allow_html=True)
 
-            if cycles:
-                top_cycle  = max(cycles, key=len)
-                alert_body = (
-                    f"<b>Pattern:</b> Multi-Hop Money Laundering + Smurfing<br/>"
-                    f"<b>Longest Chain:</b> {len(top_cycle)}-hop cycle<br/>"
-                    f"<b>Nodes:</b> {', '.join(top_cycle)}<br/>"
-                    f"<b>Entities Linked:</b> {len(linkage)} shared-device clusters<br/>"
-                    f"<b>Recommended Action:</b> Auto-freeze + SAR Filing"
-                )
-                st.markdown(alert_card("MULE LAUNDERING RING IDENTIFIED", alert_body), unsafe_allow_html=True)
-            elif smurf_flags:
-                fn   = next(iter(smurf_flags))
-                meta = smurf_flags[fn]
-                alert_body = (
-                    f"<b>Pattern:</b> Smurfing / Structuring<br/>"
-                    f"<b>Account:</b> {fn}<br/>"
-                    f"<b>Type:</b> {meta['type']}<br/>"
-                    f"<b>Receivers in window:</b> {meta.get('count','?')}<br/>"
-                    f"<b>Recommended Action:</b> Account Suspension + AML Review"
-                )
-                st.markdown(alert_card("SMURFING PATTERN DETECTED", alert_body), unsafe_allow_html=True)
-            else:
-                st.markdown("""<div style="background:#0a1a0a;border:1px solid #00ff88;
-                                  border-radius:8px;padding:1rem;margin-top:0.8rem;">
-                      <div style="color:#00ff88;font-size:0.8rem;">✅ NO CRITICAL THREATS</div>
-                      <div style="color:#5a7090;font-size:0.72rem;margin-top:0.3rem;">
-                        All accounts within normal parameters.</div>
+            # ── Tabs for Organization ─────────────────────────────────────
+            tab_graph, tab_data, tab_alerts = st.tabs(["🌐 Network Graph View", "📊 Data Table View", "🚨 Alerts"])
+
+            # -- TAB 1: Network Graph View
+            with tab_graph:
+                st.markdown(section_header("// COMMAND CENTER — LIVE ANALYSIS"), unsafe_allow_html=True)
+                left_col, right_col = st.columns([1, 2])
+
+                with left_col:
+                    st.markdown(section_header("SYSTEM CONSOLE","#5a7090"), unsafe_allow_html=True)
+                    st.markdown(terminal_box(logs), unsafe_allow_html=True)
+
+                    if cycles:
+                        top_cycle  = max(cycles, key=len)
+                        alert_body = (
+                            f"<b>Pattern:</b> Multi-Hop Money Laundering + Smurfing<br/>"
+                            f"<b>Longest Chain:</b> {len(top_cycle)}-hop cycle<br/>"
+                            f"<b>Nodes:</b> {', '.join(top_cycle)}<br/>"
+                            f"<b>Entities Linked:</b> {len(linkage)} shared-device clusters<br/>"
+                            f"<b>Recommended Action:</b> Auto-freeze + SAR Filing"
+                        )
+                        st.markdown(alert_card("MULE LAUNDERING RING IDENTIFIED", alert_body), unsafe_allow_html=True)
+                    elif smurf_flags:
+                        fn   = next(iter(smurf_flags))
+                        meta = smurf_flags[fn]
+                        alert_body = (
+                            f"<b>Pattern:</b> Smurfing / Structuring<br/>"
+                            f"<b>Account:</b> {fn}<br/>"
+                            f"<b>Type:</b> {meta['type']}<br/>"
+                            f"<b>Receivers in window:</b> {meta.get('count','?')}<br/>"
+                            f"<b>Recommended Action:</b> Account Suspension + AML Review"
+                        )
+                        st.markdown(alert_card("SMURFING PATTERN DETECTED", alert_body), unsafe_allow_html=True)
+                    else:
+                        st.markdown("""<div style="background:#0a1a0a;border:1px solid #00ff88;
+                                          border-radius:8px;padding:1rem;margin-top:0.8rem;">
+                              <div style="color:#00ff88;font-size:0.8rem;">✅ NO CRITICAL THREATS</div>
+                              <div style="color:#5a7090;font-size:0.72rem;margin-top:0.3rem;">
+                                All accounts within normal parameters.</div>
+                            </div>""", unsafe_allow_html=True)
+
+                    if cycles:
+                        with st.expander(f"🔗 View All {len(cycles)} Detected Cycles", expanded=False):
+                            for i, cycle in enumerate(cycles, 1):
+                                color = "#ff0055" if len(cycle) >= 4 else "#ff6688"
+                                st.markdown(
+                                    f"<div style='color:{color};font-size:0.75rem;"
+                                    f"margin-bottom:4px;font-family:monospace;'>"
+                                    f"Cycle {i} ({len(cycle)}-hop): {'  →  '.join(cycle)} → {cycle[0]}</div>",
+                                    unsafe_allow_html=True)
+
+                with right_col:
+                    st.markdown(section_header("NETWORK GRAPH — LIVE FRAUD MAP","#00e5ff"), unsafe_allow_html=True)
+                    st.markdown("""
+                    <div style="display:flex;gap:1.5rem;font-size:0.72rem;margin-bottom:0.5rem;">
+                      <span><span style="color:#ff0055;">&#x25CF;</span>&nbsp;Flagged Mule Account</span>
+                      <span><span style="color:#00e5ff;">&#x25CF;</span>&nbsp;Normal Account</span>
+                      <span><span style="color:#ff0055;">&#x2014;</span>&nbsp;Fraud Transfer</span>
+                      <span><span style="color:#334155;">&#x2014;</span>&nbsp;Normal Transfer</span>
                     </div>""", unsafe_allow_html=True)
 
-            if cycles:
-                with st.expander(f"🔗 View All {len(cycles)} Detected Cycles", expanded=False):
-                    for i, cycle in enumerate(cycles, 1):
-                        color = "#ff0055" if len(cycle) >= 4 else "#ff6688"
-                        st.markdown(
-                            f"<div style='color:{color};font-size:0.75rem;"
-                            f"margin-bottom:4px;font-family:monospace;'>"
-                            f"Cycle {i} ({len(cycle)}-hop): {'  →  '.join(cycle)} → {cycle[0]}</div>",
-                            unsafe_allow_html=True)
+                    with st.spinner("🔄  Rendering interactive graph…"):
+                        pyvis_html = build_pyvis(G, flagged_nodes, flagged_edges)
+                    components.html(pyvis_html, height=540, scrolling=False)
 
-        with right_col:
-            st.markdown(section_header("NETWORK GRAPH — LIVE FRAUD MAP","#00e5ff"), unsafe_allow_html=True)
-            st.markdown("""
-            <div style="display:flex;gap:1.5rem;font-size:0.72rem;margin-bottom:0.5rem;">
-              <span><span style="color:#ff0055;">&#x25CF;</span>&nbsp;Flagged Mule Account</span>
-              <span><span style="color:#00e5ff;">&#x25CF;</span>&nbsp;Normal Account</span>
-              <span><span style="color:#ff0055;">&#x2014;</span>&nbsp;Fraud Transfer</span>
-              <span><span style="color:#334155;">&#x2014;</span>&nbsp;Normal Transfer</span>
+            # -- TAB 2: Data Table View
+            with tab_data:
+                st.markdown(section_header("// RAW TRANSACTION DATA"), unsafe_allow_html=True)
+                st.dataframe(df, use_container_width=True, height=500)
+
+            # -- TAB 3: Alerts
+            with tab_alerts:
+                st.markdown(section_header("// AUDIT TRAIL — FLAGGED TRANSACTIONS"), unsafe_allow_html=True)
+
+                if not alerts_df.empty:
+                    st.markdown(f"""
+                    <div style="background:#0d1527;border:1px solid #334155;border-radius:8px;
+                                padding:0.9rem 1.2rem;margin-bottom:0.8rem;
+                                display:flex;gap:2rem;font-size:0.78rem;">
+                      <div><span style="color:#5a7090;">Flagged Transactions:</span>&nbsp;
+                           <span style="color:#ff0055;font-weight:700;">{len(alerts_df)}</span></div>
+                      <div><span style="color:#5a7090;">Unique Alert Types:</span>&nbsp;
+                           <span style="color:#ff0055;font-weight:700;">{alerts_df['alert_type'].nunique()}</span></div>
+                      <div><span style="color:#5a7090;">Accounts Auto-Frozen:</span>&nbsp;
+                           <span style="color:#ff0055;font-weight:700;">{len(flagged_nodes)}</span></div>
+                      <div><span style="color:#5a7090;">Total Exposure:</span>&nbsp;
+                           <span style="color:#ff0055;font-weight:700;">&#8377;{alerts_df['amount_inr'].sum():,.0f}</span></div>
+                    </div>""", unsafe_allow_html=True)
+
+                    st.dataframe(
+                        alerts_df.style.map(
+                            lambda v: "color: #ff0055; font-weight: bold" if v == "🚨 AUTO-FROZEN" else "",
+                            subset=["status"]
+                        ).map(
+                            lambda v: "color: #ff6688"
+                            if isinstance(v, str) and "%" in v and int(v.rstrip("%")) >= 90 else "",
+                            subset=["risk_score"]
+                        ),
+                        use_container_width=True, height=340)
+                else:
+                    st.info("No flagged transactions found. The network appears clean.")
+
+                if linkage:
+                    st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+                    st.markdown(section_header("// ENTITY LINKAGE — SHARED DEVICE CLUSTERS"), unsafe_allow_html=True)
+                    st.dataframe(
+                        pd.DataFrame([{"device_fingerprint": dev, "linked_accounts": ", ".join(accts),
+                                        "account_count": len(accts)} for dev, accts in linkage.items()]),
+                        use_container_width=True, height=200)
+
+            # ── Footer ────────────────────────────────────────────────────────
+            st.markdown("""<div style="margin-top:2.5rem;border-top:1px solid #334155;
+                               padding-top:0.8rem;font-size:0.65rem;color:#334155;
+                               text-align:center;letter-spacing:0.1em;">
+              FINSENTINEL v1.0 &nbsp;|&nbsp; ENTERPRISE AML &amp; FINANCIAL CRIME INTELLIGENCE
+              &nbsp;|&nbsp; GRAPH-BASED TRANSACTION ANALYTICS &nbsp;|&nbsp;
+              SIMULATED DATA &mdash; FOR DEMONSTRATION PURPOSES ONLY
             </div>""", unsafe_allow_html=True)
-
-            with st.spinner("🔄  Rendering interactive graph…"):
-                pyvis_html = build_pyvis(G, flagged_nodes, flagged_edges)
-            components.html(pyvis_html, height=540, scrolling=False)
-
-        # ── Audit Trail ───────────────────────────────────────────────────
-        st.markdown("<div style='margin-top:1.5rem;'></div>", unsafe_allow_html=True)
-        st.markdown(section_header("// AUDIT TRAIL — FLAGGED TRANSACTIONS"), unsafe_allow_html=True)
-
-        if not alerts_df.empty:
-            st.markdown(f"""
-            <div style="background:#0d1527;border:1px solid #334155;border-radius:8px;
-                        padding:0.9rem 1.2rem;margin-bottom:0.8rem;
-                        display:flex;gap:2rem;font-size:0.78rem;">
-              <div><span style="color:#5a7090;">Flagged Transactions:</span>&nbsp;
-                   <span style="color:#ff0055;font-weight:700;">{len(alerts_df)}</span></div>
-              <div><span style="color:#5a7090;">Unique Alert Types:</span>&nbsp;
-                   <span style="color:#ff0055;font-weight:700;">{alerts_df['alert_type'].nunique()}</span></div>
-              <div><span style="color:#5a7090;">Accounts Auto-Frozen:</span>&nbsp;
-                   <span style="color:#ff0055;font-weight:700;">{len(flagged_nodes)}</span></div>
-              <div><span style="color:#5a7090;">Total Exposure:</span>&nbsp;
-                   <span style="color:#ff0055;font-weight:700;">&#8377;{alerts_df['amount_inr'].sum():,.0f}</span></div>
-            </div>""", unsafe_allow_html=True)
-
-            st.dataframe(
-                alerts_df.style.map(
-                    lambda v: "color: #ff0055; font-weight: bold" if v == "🚨 AUTO-FROZEN" else "",
-                    subset=["status"]
-                ).map(
-                    lambda v: "color: #ff6688"
-                    if isinstance(v, str) and "%" in v and int(v.rstrip("%")) >= 90 else "",
-                    subset=["risk_score"]
-                ),
-                use_container_width=True, height=340)
-        else:
-            st.info("No flagged transactions found. The network appears clean.")
-
-        # ── Entity Linkage ────────────────────────────────────────────────
-        if linkage:
-            st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
-            st.markdown(section_header("// ENTITY LINKAGE — SHARED DEVICE CLUSTERS"), unsafe_allow_html=True)
-            st.dataframe(
-                pd.DataFrame([{"device_fingerprint": dev, "linked_accounts": ", ".join(accts),
-                                "account_count": len(accts)} for dev, accts in linkage.items()]),
-                use_container_width=True, height=200)
-
-        # ── Footer ────────────────────────────────────────────────────────
-        st.markdown("""<div style="margin-top:2.5rem;border-top:1px solid #334155;
-                           padding-top:0.8rem;font-size:0.65rem;color:#334155;
-                           text-align:center;letter-spacing:0.1em;">
-          FINSENTINEL v1.0 &nbsp;|&nbsp; ENTERPRISE AML &amp; FINANCIAL CRIME INTELLIGENCE
-          &nbsp;|&nbsp; GRAPH-BASED TRANSACTION ANALYTICS &nbsp;|&nbsp;
-          SIMULATED DATA &mdash; FOR DEMONSTRATION PURPOSES ONLY
-        </div>""", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════
     # FATAL ERROR HANDLER — never let "Oh no." show again
@@ -666,3 +692,4 @@ def main() -> None:
 # ────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     main()
+
