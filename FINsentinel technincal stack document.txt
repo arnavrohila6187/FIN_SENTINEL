@@ -1,0 +1,96 @@
+====================================================================
+TECHNICAL STACK & ARCHITECTURE DOCUMENT
+====================================================================
+Project Name: FinSentinel 
+Objective: Technical blueprint for a real-time graph intelligence engine.
+Target Track: Track 2 — Fraud Detection & Financial Crime Prevention
+Reference: Problem Statement 5 from the "Build $ Bank" hackathon[cite: 1].
+====================================================================
+
+1. SYSTEM ARCHITECTURE OVERVIEW
+--------------------------------------------------------------------
+FinSentinel is designed as a lightweight, monolithic Python application to ensure maximum development speed and seamless deployment as a solo developer. Instead of decoupling the frontend and backend, the entire application logic resides within a unified Streamlit environment. 
+
+The data pipeline follows a strict 4-step execution flow:
+[ Synthetic Data Ingestion ] --> [ Pandas Data Frame Structuring ] --> [ NetworkX Graph Processing & Algorithmic Scoring ] --> [ Streamlit & PyVis UI Rendering ]
+
+Per the "Build $ Bank" guidelines, the system operates entirely on simulated data without external bank API dependencies, delivering a focused prototype that proves the core algorithmic concept[cite: 1].
+
+2. FRONTEND LAYER (USER INTERFACE)
+--------------------------------------------------------------------
+The frontend is strictly built without heavy JavaScript frameworks (like React or Angular) to save time, relying entirely on Streamlit's UI rendering capabilities coupled with Custom CSS for a "Security Operations Center" (SOC) aesthetic.
+
+* Framework: Streamlit (Python-based UI).
+* Theming & Styling: 
+  - Custom HTML/CSS injected via `st.markdown(unsafe_allow_html=True)`.
+  - Background Color: Pitch Dark/Deep Navy (`#080c14`).
+  - Typography: Monospace/Terminal fonts (`Courier New`, `Consolas`).
+  - Accent Colors: Neon Matrix Green (`#00FF88`) for safe states, Cyber Neon Red (`#FF0055`) for flagged threats, and Cyan (`#00E5FF`) for neutral nodes.
+* Layout Components: 
+  - `st.columns`: Used to grid out the KPI metric cards and the split terminal/graph view.
+  - `st.dataframe`: Used to render the final flagged transaction tables with interactive sorting.
+* State Management: `@st.cache_data` is heavily utilized to cache the loaded datasets and graph models in memory, ensuring the app does not recompute the graph on every UI interaction.
+
+3. GRAPH VISUALIZATION ENGINE
+--------------------------------------------------------------------
+Standard charts (bar graphs, pie charts) cannot display multi-account laundering rings. Therefore, the visualizer uses specialized graph rendering tools.
+* Library: PyVis (`pyvis.network`).
+* Execution: PyVis takes the mathematical graph object generated in the backend and compiles it into an interactive HTML/JavaScript canvas.
+* Features enabled: 
+  - Physics Engine Simulation (nodes repel each other for clean layouts).
+  - Hover Tooltips (showing exact transaction amounts on edges).
+  - Dynamic Node Sizing (mule accounts are rendered 2x larger and highlighted in red).
+* Integration: The generated HTML canvas is embedded into Streamlit using `streamlit.components.v1.html()`.
+
+4. BACKEND & CORE ANALYTICS (THE DETECTION ENGINE)
+--------------------------------------------------------------------
+This is the "brain" of the prototype, handling data structures and mathematical calculations.
+* Programming Language: Python 3.9+
+* Data Manipulation: Pandas (`pandas==2.0+`).
+  - Function: Converts raw CSV logs into structured DataFrames. Filters transactions based on time-windows and extracts edge-lists (Source, Target, Amount).
+* Graph Processing: NetworkX (`networkx==3.0+`).
+  - Function: Constructs a `nx.DiGraph()` (Directed Graph) where accounts are nodes and fund transfers are directional edges.
+* Core Detection Algorithms:
+  - Multi-Hop Cycle Detection: Utilizes `nx.simple_cycles()` bounded by a depth limit to find circular money movement (A -> B -> C -> A).
+  - Smurfing / Velocity Checks: Utilizes `nx.degree_centrality()` and custom in-degree/out-degree ratio logic. Identifies "Fan-Out" nodes (high out-degree, low amounts) and "Fan-In" nodes (high in-degree, consolidating amounts).
+
+5. DATA LAYER (SYNTHETIC DATA GENERATION)
+--------------------------------------------------------------------
+Because access to real banking data is legally restricted, and following the "Build $ Bank" rules regarding simulated datasets, FinSentinel relies on a custom-generated data pipeline[cite: 1].
+* Generator Script: A standalone Python script (`generate_data.py`) utilizing the `random` and `datetime` libraries.
+* Output: A flat `transactions.csv` file.
+* Schema Mapping:
+  - `txn_id` (String: UUID)
+  - `sender_id` (String: Account identifier)
+  - `receiver_id` (String: Account identifier)
+  - `amount_inr` (Float)
+  - `timestamp` (ISO 8601 Format)
+  - `device_fingerprint` (String: Used for entity linkage)
+* Injection Logic: The script generates 95% random noise (normal transactions) and specifically injects 5% engineered fraud loops (e.g., 3-hop mule chains) designed to perfectly trigger the NetworkX algorithms during the hackathon pitch.
+
+6. PROPOSED DIRECTORY STRUCTURE
+--------------------------------------------------------------------
+To keep the solo project highly organized for judges reviewing the GitHub repo:
+/FinSentinel
+  ├── app.py                 # Main Streamlit application and UI logic
+  ├── engine.py              # NetworkX algorithms and data processing functions
+  ├── generate_data.py       # Standalone script to create synthetic CSV
+  ├── data/
+  │   └── transactions.csv   # The injected synthetic dataset
+  ├── requirements.txt       # List of Python dependencies
+  └── README.md              # Project pitch and setup instructions
+
+7. DEPLOYMENT & HOSTING (HACKATHON SCOPE)
+--------------------------------------------------------------------
+* Local Testing: `streamlit run app.py` (accessible at localhost:8501).
+* Live Prototype Hosting: Streamlit Community Cloud or Render.com. 
+  - Why: Allows judges to interact with the dashboard via a public URL instantly, without needing to install Python on their local machines.
+* Version Control: Git / GitHub (to showcase clean commit history and structured code).
+
+8. FUTURE SCALABILITY ARCHITECTURE (POST-HACKATHON)
+--------------------------------------------------------------------
+While the current stack perfectly fits the focused prototype requirement of the "Build $ Bank" brief, the presentation will outline the following production scale-up path[cite: 1]:
+* Database: Migration from in-memory CSVs to Amazon Neptune or Neo4j Graph Database.
+* Data Ingestion: Apache Kafka for real-time transaction stream processing.
+* AI/ML Layer: Implementation of Graph Neural Networks (GNNs) via PyTorch Geometric to predict new, unseen smurfing patterns automatically.
+====================================================================

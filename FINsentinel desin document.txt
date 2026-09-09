@@ -1,0 +1,99 @@
+====================================================================
+UI/UX & SYSTEM DESIGN DOCUMENT
+====================================================================
+Project Name: FinSentinel 
+Objective: Detailed UI/UX architecture and visual design blueprint.
+Target Track: Track 2 — Fraud Detection & Financial Crime Prevention
+Reference: Problem Statement 5 from the "Build $ Bank" hackathon[cite: 1].
+====================================================================
+
+1. DESIGN PHILOSOPHY & CONCEPT
+--------------------------------------------------------------------
+The core objective of FinSentinel is to visualize scattered financial crimes that traditional systems miss[cite: 1]. Standard banking dashboards use clean, white corporate interfaces with standard bar charts. FinSentinel deliberately breaks this mold by adopting a "Security Operations Center" (SOC) / Cyberpunk aesthetic. 
+
+Why this design?
+* High Contrast for Graphs: Graph nodes (circles) and edges (lines) are difficult to trace on white backgrounds. A pitch-dark background allows neon-colored fraud rings to "pop," instantly drawing the user's eye to the anomaly.
+* Psychological Impact: The hackathon presentation must wow the judges. A terminal-style, hacker-centric UI instantly communicates that this is a deep-tech cybersecurity tool, elevating the perceived complexity of the prototype.
+* Focus over Fluff: Per the "Build $ Bank" guidelines, this is a focused prototype[cite: 1]. The design strips away unnecessary navigation menus and settings, presenting only the core algorithmic results on a single, high-impact screen.
+
+2. GLOBAL STYLING: COLOR PALETTE & TYPOGRAPHY
+--------------------------------------------------------------------
+To be injected into Streamlit via custom CSS (`st.markdown(unsafe_allow_html=True)`).
+
+2.1. Color Palette (Hex Codes)
+* Global Background: Deep Navy / Void Black (`#080c14`) - Reduces eye strain for analysts staring at screens for hours.
+* Primary Text: Cyber Cyan (`#00e5ff`) - Used for standard text, subtitles, and normal nodes.
+* Safe/Active Status: Neon Matrix Green (`#00ff88`) - Used for "System Online" indicators and normal transaction metrics.
+* Critical/Alert Status: Cyber Neon Red (`#ff0055`) - Exclusively reserved for flagged Mule Accounts, fraudulent edges, and critical alert boxes.
+* Card Backgrounds: Obsidian (`#0d1527`) - Used to create depth for metric cards against the main background.
+* Borders/Dividers: Slate Gray (`#334155`) - Subtle lines to separate sections without causing visual clutter.
+
+2.2. Typography
+* Primary Font Family: `'Courier New', Consolas, monospace`.
+* Rationale: Monospace fonts ensure that numbers (like transaction amounts and account IDs) align perfectly in columns, which is crucial for financial data. It also reinforces the "Terminal/Command Line" aesthetic.
+* Text Shadows: Applied to the main titles to create a glowing neon effect (`text-shadow: 0 0 10px #00ff88`).
+
+3. GRID ARCHITECTURE & LAYOUT (STREAMLIT WIDE MODE)
+--------------------------------------------------------------------
+The UI is restricted to a single-page layout utilizing Streamlit's `layout="wide"` setting to maximize horizontal screen real estate for the graph visualizer.
+
+3.1. Top Header (Row 1)
+* Split: 75% Left / 25% Right.
+* Left: Glowing Main Title ("🛡️ FINSENTINEL // GRAPH ENGINE") and Subtitle.
+* Right: A pulsing CSS status badge ("● ENGINE ONLINE") aligned to the right edge.
+
+3.2. Key Performance Indicators (Row 2)
+* Split: 4 Equal Columns (25% each).
+* Card 1: TRANSACTIONS SCANNED (Value in Cyan).
+* Card 2: ACTIVE GRAPH NODES (Value in Cyan).
+* Card 3: MULE CHAINS DETECTED (Value in Red, indicating action required).
+* Card 4: TOTAL RISK EXPOSURE (Monetary value in Red, showing total funds blocked).
+* Styling: Cards have a `#0d1527` background, a 1px cyan border, and a subtle glowing box-shadow.
+
+3.3. The Command Center (Row 3 - Core View)
+* Split: 33% Left (Text/Logs) / 67% Right (Visualizer).
+* Left Panel (System Console & Alerts):
+  - A fixed-height (150px) scrolling terminal box with an inner shadow (`box-shadow: inset 0 0 10px rgba(0,0,0,0.8)`). Outputs simulated backend logs line-by-line to show the engine "working."
+  - An "Alert Card" below the terminal with a thick red border detailing the exact pattern caught (e.g., "Smurfing + Multi-Hop Aggregation").
+* Right Panel (Live PyVis Network Graph):
+  - Spans the majority of the screen to give the graph room to breathe.
+  - Rendered in a fixed 400px height HTML iframe.
+
+3.4. Audit Trail (Row 4)
+* A full-width Streamlit Dataframe (`st.dataframe`).
+* Displays the raw tabular data of the flagged transactions only, providing the "Proof" behind the graph's visual alert.
+
+4. COMPONENT-LEVEL DESIGN: THE PYVIS GRAPH
+--------------------------------------------------------------------
+The interactive graph is the centerpiece of the solution for "Problem Statement 5", proving the capability to trace across patterns[cite: 1].
+
+4.1. Node Specifications (Accounts)
+* Normal Accounts: Size 15, Color `#00e5ff` (Cyan).
+* Flagged Mule Accounts: Size 25 (scaled up for emphasis), Color `#ff0055` (Red).
+* Labeling: Account IDs (e.g., `ACC_9012`) hover directly below the nodes.
+
+4.2. Edge Specifications (Transactions)
+* Normal Transactions: Width 1px, Color `#334155` (Muted gray to fade into the background).
+* Fraudulent Transfers (The Mule Loop): Width 3px, Color `#ff0055` (Thick red lines connecting the mule nodes).
+* Directionality: Arrows enabled on edges to show the flow of money.
+
+4.3. Physics Engine Settings
+* Repulsion mode activated: Nodes push away from each other to prevent clustering and overlapping, ensuring the mule network chain stretches out visually and remains legible.
+* Drag-and-Drop: Users (or you, during the demo) can click and drag nodes to inspect the structure interactively.
+
+5. USER EXPERIENCE (UX) & INTERACTION FLOW
+--------------------------------------------------------------------
+Given the hackathon constraint to build a focused prototype demonstrating a core idea, the UX is heavily streamlined[cite: 1].
+
+5.1. The "Golden Path" Demo Flow
+* Step 1: The user (Judge) loads the application. The system immediately ingests the synthetic CSV dataset (as permitted by the "Build $ Bank" guidelines)[cite: 1].
+* Step 2: The terminal panel starts populating with logs, giving visual feedback that algorithms (DFS cycle detection) are running.
+* Step 3: Within 2 seconds, the PyVis graph renders. The screen is primarily dark and cyan, but a distinct cluster of RED nodes and edges appears in the center.
+* Step 4: The judge's eye is drawn to the red cluster. The UI automatically displays an "Alert Card" explaining exactly what the red cluster represents (e.g., a 4-hop laundering loop).
+* Step 5: The judge scrolls down to the Audit Table to see the exact timestamps and amounts that constitute the fraud ring, answering the question of "who/what to act on"[cite: 1].
+
+6. ACCESSIBILITY & RESPONSIVENESS
+--------------------------------------------------------------------
+* Contrast Ratios: Deep black backgrounds paired with high-luminance neon colors ensure strict contrast compliance, making text highly readable.
+* Responsiveness: Streamlit automatically stacks columns vertically if viewed on a smaller screen (e.g., a tablet). However, the primary intended viewport is a standard 1080p desktop monitor, mirroring actual banking SOC environments.
+====================================================================
