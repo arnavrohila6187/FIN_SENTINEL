@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinSentinel // eDEX-UI Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        
+        :root {
+            --neon-green: #00ff66;
+            --dark-green: #003311;
+            --bg-black: #000000;
+            --glow: 0 0 5px var(--neon-green), 0 0 10px var(--neon-green);
+            --glow-red: 0 0 5px #ff0055, 0 0 10px #ff0055;
+            --neon-red: #ff0055;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-black);
+            color: var(--neon-green);
+            font-family: 'VT323', monospace;
+            text-transform: uppercase;
+            overflow: hidden;
+        }
+
+        /* Scanline CRT Effect */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                to bottom,
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        
+        /* Subtle flicker */
+        @keyframes flicker {
+            0% { opacity: 0.95; }
+            5% { opacity: 0.85; }
+            10% { opacity: 0.95; }
+            15% { opacity: 1; }
+            100% { opacity: 1; }
+        }
+        body {
+            animation: flicker 0.15s infinite;
+        }
+
+        /* Glow classes */
+        .text-glow {
+            text-shadow: var(--glow);
+        }
+        .text-glow-red {
+            color: var(--neon-red);
+            text-shadow: var(--glow-red);
+        }
+        .border-glow {
+            border-color: var(--neon-green);
+            box-shadow: 0 0 10px var(--dark-green) inset, 0 0 10px var(--dark-green);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-black);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--neon-green);
+        }
+        
+        /* Grid Layout */
+        .terminal-grid {
+            display: grid;
+            grid-template-columns: 250px 1fr 250px;
+            grid-template-rows: 40px 1fr 60px;
+            height: 100vh;
+            width: 100vw;
+            padding: 10px;
+            gap: 10px;
+            box-sizing: border-box;
+        }
+
+        .panel {
+            border: 1px solid var(--neon-green);
+            background-color: rgba(0, 51, 17, 0.1);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .panel-title {
+            border-bottom: 1px solid var(--neon-green);
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+        }
+
+        .top-bar {
+            grid-column: 1 / 4;
+            grid-row: 1 / 2;
+            display: flex;
+            align-items: center;
+        }
+
+        .left-sidebar {
+            grid-column: 1 / 2;
+            grid-row: 2 / 3;
+        }
+
+        .center-console {
+            grid-column: 2 / 3;
+            grid-row: 2 / 3;
+        }
+
+        .right-sidebar {
+            grid-column: 3 / 4;
+            grid-row: 2 / 3;
+        }
+
+        .bottom-bar {
+            grid-column: 1 / 4;
+            grid-row: 3 / 4;
+            display: flex;
+            align-items: center;
+            font-size: 1.5rem;
+        }
+        
+        /* Blinking Cursor */
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 1.2em;
+            background-color: var(--neon-green);
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+            margin-left: 5px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="terminal-grid">
+        
+        <!-- Top Bar: Global Status -->
+        <div class="panel top-bar border-glow text-glow" style="padding: 0 15px; flex-direction: row; justify-content: space-between;">
+            <div class="animate-pulse text-glow-red" style="font-size: 1.5rem; color: #ff0055;">[ GLOBAL RISK: CRITICAL ]</div>
+            <div class="flex gap-6" style="font-size: 1.2rem;">
+                <span id="api-interpol">INTERPOL DB: 24ms</span>
+                <span id="api-swift">SWIFT NETWORK: 12ms</span>
+                <span id="api-fincen">FinCEN: 18ms</span>
+            </div>
+        </div>
+
+        <!-- Left Sidebar: System Stats -->
+        <div class="panel left-sidebar border-glow text-glow">
+            <div class="panel-title" style="font-size: 1.2rem;">SYSTEM_STATS</div>
+            
+            <div class="mb-2">
+                <div class="stat-row" style="font-size: 1rem;"><span>CPU0_USAGE:</span> <span id="cpu0">12%</span></div>
+                <div class="stat-row" style="font-size: 1rem;"><span>CPU1_USAGE:</span> <span id="cpu1">28%</span></div>
+                <div class="stat-row" style="font-size: 1rem;"><span>CPU2_USAGE:</span> <span id="cpu2">45%</span></div>
+                <div class="stat-row" style="font-size: 1rem;"><span>CPU3_USAGE:</span> <span id="cpu3">05%</span></div>
+            </div>
+            
+            <div class="mb-2">
+                <div class="stat-row" style="font-size: 1rem;"><span>MEM_TOTAL:</span> <span>64.0G</span></div>
+                <div class="stat-row" style="font-size: 1rem;"><span>MEM_USED:</span> <span id="mem-used">12.4G</span></div>
+            </div>
+            
+            <div class="mb-2">
+                <div class="stat-row" style="font-size: 1rem;"><span>UPTIME:</span> <span id="uptime">00:00:00</span></div>
+                <div class="stat-row" style="font-size: 1rem;"><span>NET_TX:</span> <span id="net-tx">1.2M/s</span></div>
+                <div class="stat-row" style="font-size: 1rem;"><span>NET_RX:</span> <span id="net-rx">3.4M/s</span></div>
+            </div>
+
+            <div class="panel-title mt-2" style="font-size: 1.2rem;">SYS_MODULES</div>
+            <div class="flex flex-col gap-1 mb-2" id="sidebar-nav">
+                <button class="tab-btn bg-[#00ff66] text-black text-left border border-neon-green px-2 hover:bg-[#00ff66] hover:text-black transition-colors" data-target="tab-dashboard" style="border-color: #00ff66;">[ MAIN DASHBOARD ]</button>
+                <button class="tab-btn text-left border border-neon-green px-2 hover:bg-[#00ff66] hover:text-black transition-colors" data-target="tab-investigation" style="border-color: #00ff66;">[ INVESTIGATION DESK ]</button>
+                <button class="tab-btn text-left border border-neon-green px-2 hover:bg-[#00ff66] hover:text-black transition-colors" data-target="tab-alerts" style="border-color: #00ff66;">[ ALERTS & TRIAGE ]</button>
+                <button class="tab-btn text-left border border-neon-green px-2 hover:bg-[#00ff66] hover:text-black transition-colors" data-target="tab-sar" style="border-color: #00ff66;">[ SAR GENERATOR ]</button>
+                <button class="tab-btn text-left border border-neon-green px-2 hover:bg-[#00ff66] hover:text-black transition-colors" data-target="tab-rules" style="border-color: #00ff66;">[ RULE ENGINE ]</button>
+                <button class="tab-btn text-left border border-neon-green px-2 hover:bg-[#00ff66] hover:text-black transition-colors" data-target="tab-rbac" style="border-color: #00ff66;">[ RBAC ]</button>
+                <button class="tab-btn text-left border border-neon-green px-2 hover:bg-[#00ff66] hover:text-black transition-colors" data-target="tab-api" style="border-color: #00ff66;">[ API INGESTION ]</button>
+            </div>
+            
+            <div class="mt-auto">
+                <button id="btn-run" class="w-full border border-neon-green py-2 text-glow hover:bg-neon-green hover:text-black transition-colors cursor-pointer" style="border-color: #00ff66; font-family: 'VT323'; font-size: 1.5rem;">
+                    [ EXECUTE SCAN ]
+                </button>
+            </div>
+        </div>
+
+        <!-- Center Console: Tab Contents -->
+        <div class="panel center-console border-glow text-glow relative">
+            <div class="panel-title flex justify-between">
+                <span id="center-title">FINSENTINEL // MAIN_DASHBOARD</span>
+                <span id="canvas-status">IDLE</span>
+            </div>
+            
+            <div id="loader" class="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20 hidden">
+                <div class="text-2xl animate-pulse">DECRYPTING DATA STREAMS...</div>
+            </div>
+            
+            <!-- MAIN DASHBOARD -->
+            <div id="tab-dashboard" class="tab-content flex-1 w-full h-full flex flex-col items-center justify-center p-4">
+                <canvas id="riskChart"></canvas>
+            </div>
+
+            <!-- INVESTIGATION DESK -->
+            <div id="tab-investigation" class="tab-content flex-1 overflow-y-auto p-4" style="display: none;">
+                <table class="w-full text-left" style="font-size: 1.2rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--neon-green);">
+                            <th class="pb-2">CASE_ID</th>
+                            <th class="pb-2">ACCOUNT</th>
+                            <th class="pb-2">RISK_SCORE</th>
+                            <th class="pb-2">STATUS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="hover:bg-[#003311]"><td>#CS-9921</td><td>0x88f2...9a1b</td><td class="text-glow-red">98</td><td>[OPEN]</td></tr>
+                        <tr class="hover:bg-[#003311]"><td>#CS-9920</td><td>ACC-449102</td><td>74</td><td>[INVESTIGATING]</td></tr>
+                        <tr class="hover:bg-[#003311]"><td>#CS-9919</td><td>CORP-LLC-99</td><td class="text-glow-red">91</td><td>[ESCALATED]</td></tr>
+                        <tr class="hover:bg-[#003311]"><td>#CS-9918</td><td>0x11b...4f2c</td><td>42</td><td>[CLOSED]</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ALERTS & TRIAGE -->
+            <div id="tab-alerts" class="tab-content flex-1 overflow-y-auto p-4 flex flex-col gap-4" style="display: none;">
+                <div class="border border-neon-green p-2 flex justify-between items-center bg-[#003311] bg-opacity-50">
+                    <div>
+                        <div class="text-glow-red">[CRITICAL] STR_RULE_81: Structuring detected</div>
+                        <div style="font-size: 1rem; opacity: 0.8;">Entity: John Doe | Velocity: $49,990 in 24h</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="border border-neon-green px-2 py-1 hover:bg-[#00ff66] hover:text-black transition-colors">ACKNOWLEDGE</button>
+                        <button class="border border-red-500 text-red-500 px-2 py-1 hover:bg-red-500 hover:text-black transition-colors">ESCALATE</button>
+                    </div>
+                </div>
+                <div class="border border-neon-green p-2 flex justify-between items-center">
+                    <div>
+                        <div style="color: yellow;">[WARN] KYC_EXPIRY: Missing BO Docs</div>
+                        <div style="font-size: 1rem; opacity: 0.8;">Entity: Global Trade LLC | Days Overdue: 14</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="border border-neon-green px-2 py-1 hover:bg-[#00ff66] hover:text-black transition-colors">ACKNOWLEDGE</button>
+                        <button class="border border-red-500 text-red-500 px-2 py-1 hover:bg-red-500 hover:text-black transition-colors">ESCALATE</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SAR GENERATOR -->
+            <div id="tab-sar" class="tab-content flex-1 overflow-y-auto p-4" style="display: none;">
+                <div class="flex flex-col gap-4 max-w-2xl mx-auto w-full">
+                    <div class="flex flex-col">
+                        <label>TARGET_ENTITY:</label>
+                        <input type="text" class="bg-black border border-neon-green p-2 text-neon-green focus:outline-none focus:shadow-[0_0_10px_#00ff66]" value="0x88f2...9a1b">
+                    </div>
+                    <div class="flex flex-col">
+                        <label>SUSPICIOUS_ACTIVITY_DETAILS:</label>
+                        <textarea class="bg-black border border-neon-green p-2 text-neon-green h-32 focus:outline-none focus:shadow-[0_0_10px_#00ff66]">Multiple rapid transfers to high-risk jurisdiction (Node-7) followed by mixing service interaction.</textarea>
+                    </div>
+                    <button class="border border-neon-green py-2 text-glow hover:bg-[#00ff66] hover:text-black mt-4 text-xl transition-colors">
+                        [ GENERATE REPORT ]
+                    </button>
+                </div>
+            </div>
+
+            <!-- RULE ENGINE -->
+            <div id="tab-rules" class="tab-content flex-1 overflow-y-auto p-4" style="display: none;">
+                <pre style="font-family: 'VT323', monospace; font-size: 1.2rem; color: #00ff66; background: rgba(0,255,102,0.05); padding: 10px; border: 1px solid var(--neon-green);">
+{
+    "rule_id": "AML_TYP_09",
+    "name": "High Velocity Structuring",
+    "condition": {
+        "and": [
+            {"sum_amount": { "&gt;=": 9500, "&lt;=": 10000 }},
+            {"time_window_hours": 24},
+            {"count": { "&gt;=": 3 }}
+        ]
+    },
+    "action": {
+        "flag": true,
+        "risk_score_increment": 45,
+        "alert_queue": "L2_TRIAGE"
+    }
+}
+                </pre>
+            </div>
+
+            <!-- RBAC -->
+            <div id="tab-rbac" class="tab-content flex-1 overflow-y-auto p-4" style="display: none;">
+                <table class="w-full text-left" style="font-size: 1.2rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--neon-green);">
+                            <th class="pb-2">USER_ID</th>
+                            <th class="pb-2">CLEARANCE</th>
+                            <th class="pb-2">LAST_LOGIN</th>
+                            <th class="pb-2">STATUS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="hover:bg-[#003311]"><td>root_sys</td><td class="text-glow-red">ADMIN (L4)</td><td>0s ago</td><td>[ACTIVE]</td></tr>
+                        <tr class="hover:bg-[#003311]"><td>a.smith</td><td>L2_ANALYST</td><td>14m ago</td><td>[ACTIVE]</td></tr>
+                        <tr class="hover:bg-[#003311]"><td>j.doe</td><td>L1_ANALYST</td><td>2h ago</td><td>[ACTIVE]</td></tr>
+                        <tr class="hover:bg-[#003311]"><td>sys_bot_1</td><td>API_READ</td><td>12s ago</td><td>[ACTIVE]</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- API INGESTION -->
+            <div id="tab-api" class="tab-content flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center text-2xl gap-4" style="display: none;">
+                <div class="animate-pulse text-glow">>>> ESTABLISHING DATALINK...</div>
+                <div class="flex justify-between w-full max-w-md border border-neon-green p-4 bg-[#003311] bg-opacity-30">
+                    <span>OFAC Database</span>
+                    <span id="ping-ofac">Ping: 12ms [OK]</span>
+                </div>
+                <div class="flex justify-between w-full max-w-md border border-neon-green p-4 bg-[#003311] bg-opacity-30">
+                    <span>SWIFT Network</span>
+                    <span id="ping-swift">Ping: 8ms [OK]</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Sidebar: Network / Live Feed -->
+        <div class="panel right-sidebar border-glow text-glow">
+            <div class="panel-title flex justify-between items-center">
+                <span>NETWORK_NODES</span>
+                <a href="/logout" class="text-glow hover:text-white" style="color: #00ff66; text-decoration: none; font-size: 1.2rem;">[ LOGOUT ]</a>
+            </div>
+            <div class="mb-6">
+                <div class="stat-row"><span>TOTAL_TX:</span> <span id="kpi-total">0</span></div>
+                <div class="stat-row"><span>FLAGGED:</span> <span class="text-glow-red" id="kpi-flagged">0</span></div>
+            </div>
+
+            <div class="panel-title mt-4" style="font-size: 1.2rem;">LIVE NETWORK LOGS</div>
+            <div class="flex-1 overflow-y-auto" id="live-feed" style="padding-right: 5px;">
+                <!-- Random log entries will be pushed here -->
+            </div>
+        </div>
+
+        <!-- Bottom Bar: Terminal Input -->
+        <div class="panel bottom-bar border-glow text-glow">
+            <span>root@finsentinel:~$</span>
+            <span class="ml-2" id="cmd-text"></span><span class="cursor"></span>
+        </div>
+
+    </div>
+
+    <script>
+        // System Stats Simulation
+        setInterval(() => {
+            document.getElementById('cpu0').textContent = Math.floor(Math.random() * 100) + '%';
+            document.getElementById('cpu1').textContent = Math.floor(Math.random() * 100) + '%';
+            document.getElementById('cpu2').textContent = Math.floor(Math.random() * 100) + '%';
+            document.getElementById('cpu3').textContent = Math.floor(Math.random() * 100) + '%';
+            document.getElementById('mem-used').textContent = (10 + Math.random() * 10).toFixed(1) + 'G';
+            document.getElementById('net-tx').textContent = (Math.random() * 5).toFixed(1) + 'M/s';
+            document.getElementById('net-rx').textContent = (Math.random() * 10).toFixed(1) + 'M/s';
+        }, 1000);
+
+        // Uptime counter
+        let seconds = 0;
+        setInterval(() => {
+            seconds++;
+            const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+            const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+            const s = String(seconds % 60).padStart(2, '0');
+            document.getElementById('uptime').textContent = `${h}:${m}:${s}`;
+        }, 1000);
+        
+        // Live Feed Mocking
+        const feed = document.getElementById('live-feed');
+        const logMsgs = [
+            "[SYS] Syncing OFAC Database...",
+            "[WARN] Encrypted packet dropped",
+            "[ANALYZE] Tracing mule route...",
+            "[NET] Handshake established with node-7",
+            "[ALERT] Unusual outbound traffic detected",
+            "[SYS] Kernel module 'fin_sec' loaded",
+            "[ANALYZE] Deep packet inspection running...",
+            "[WARN] Unauthorized access attempt blocked",
+            "[NET] Rerouting through VPN tunnel..."
+        ];
+        setInterval(() => {
+            if (feed.children.length > 25) {
+                feed.removeChild(feed.firstChild);
+            }
+            const el = document.createElement('div');
+            el.className = 'mb-1 opacity-75';
+            el.style.fontSize = '1.0rem';
+            const msg = logMsgs[Math.floor(Math.random() * logMsgs.length)];
+            const statusColor = msg.includes('[WARN]') || msg.includes('[ALERT]') ? 'var(--neon-red)' : 'var(--neon-green)';
+            el.innerHTML = `<span style="color: ${statusColor}">> ${msg}</span>`;
+            feed.appendChild(el);
+            feed.scrollTop = feed.scrollHeight;
+        }, 1500);
+
+        // API Latency Mocking
+        setInterval(() => {
+            document.getElementById('api-interpol').textContent = `INTERPOL DB: ${Math.floor(Math.random() * 15 + 15)}ms`;
+            document.getElementById('api-swift').textContent = `SWIFT NETWORK: ${Math.floor(Math.random() * 10 + 8)}ms`;
+            document.getElementById('api-fincen').textContent = `FinCEN: ${Math.floor(Math.random() * 20 + 10)}ms`;
+        }, 2000);
+
+        // SPA Tab Switching Logic
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const centerTitle = document.getElementById('center-title');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // Reset all buttons styling
+                tabBtns.forEach(b => {
+                    b.classList.remove('bg-[#00ff66]', 'text-black');
+                });
+                
+                // Hide all tabs
+                tabContents.forEach(content => {
+                    content.style.display = 'none';
+                });
+                
+                // Activate clicked button
+                btn.classList.add('bg-[#00ff66]', 'text-black');
+                
+                // Show corresponding tab
+                const targetId = btn.getAttribute('data-target');
+                document.getElementById(targetId).style.display = '';
+                
+                // Update Title
+                const moduleName = btn.textContent.replace(/[\[\]]/g, '').trim();
+                centerTitle.textContent = `FINSENTINEL // ${moduleName.replace(/ /g, '_')}`;
+
+                // Resize chart if going back to dashboard
+                if (targetId === 'tab-dashboard' && riskChart) {
+                    riskChart.resize();
+                }
+            });
+        });
+
+        // Specific API Tab Pings
+        setInterval(() => {
+            const apiTab = document.getElementById('tab-api');
+            if (apiTab && apiTab.style.display !== 'none') {
+                document.getElementById('ping-ofac').textContent = `Ping: ${Math.floor(Math.random() * 5 + 10)}ms [OK]`;
+                document.getElementById('ping-swift').textContent = `Ping: ${Math.floor(Math.random() * 5 + 5)}ms [OK]`;
+            }
+        }, 1000);
+
+        // Typing Effect in Terminal
+        const cmds = ["./scan_network.sh", "tail -f /var/log/auth.log", "nmap -sS -O 192.168.1.0/24", "python3 exploit.py"];
+        const cmdEl = document.getElementById('cmd-text');
+        let currentCmdIdx = 0;
+        let currentCharIdx = 0;
+        let isTyping = true;
+        
+        function typeCmd() {
+            const cmd = cmds[currentCmdIdx];
+            if (isTyping) {
+                if (currentCharIdx < cmd.length) {
+                    cmdEl.textContent += cmd.charAt(currentCharIdx);
+                    currentCharIdx++;
+                    setTimeout(typeCmd, Math.random() * 150 + 50);
+                } else {
+                    isTyping = false;
+                    setTimeout(typeCmd, 3000);
+                }
+            } else {
+                cmdEl.textContent = "";
+                currentCharIdx = 0;
+                currentCmdIdx = (currentCmdIdx + 1) % cmds.length;
+                isTyping = true;
+                setTimeout(typeCmd, 500);
+            }
+        }
+        setTimeout(typeCmd, 1000);
+
+
+        // Chart Integration
+        let riskChart = null;
+        const btnRun = document.getElementById('btn-run');
+        const loader = document.getElementById('loader');
+        const statusText = document.getElementById('canvas-status');
+
+        btnRun.addEventListener('click', async () => {
+            // UI State updates
+            btnRun.disabled = true;
+            btnRun.classList.add('opacity-50');
+            loader.classList.remove('hidden');
+            statusText.textContent = 'EXECUTING...';
+            statusText.className = 'text-glow';
+            const chartCanvas = document.getElementById('riskChart');
+            if (chartCanvas) chartCanvas.style.opacity = '0.2';
+
+            try {
+                const response = await fetch('/api/data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Update KPIs
+                    document.getElementById('kpi-total').textContent = data.metrics.total;
+                    document.getElementById('kpi-flagged').textContent = data.metrics.flagged;
+
+                    // Render Chart
+                    const ctx = chartCanvas.getContext('2d');
+                    if (riskChart) {
+                        riskChart.destroy();
+                    }
+                    
+                    Chart.defaults.font.family = '"VT323", monospace';
+                    Chart.defaults.color = '#00ff66';
+
+                    riskChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.chart_data.labels, // High, Medium, Low
+                            datasets: [{
+                                data: data.chart_data.values,
+                                backgroundColor: ['#ff0055', '#ccaa00', '#00ff66'], // Red, Yellow/Orange, Green
+                                borderColor: '#000000',
+                                borderWidth: 2,
+                                hoverOffset: 10
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        color: '#00ff66',
+                                        font: {
+                                            family: '"VT323", monospace',
+                                            size: 20
+                                        }
+                                    }
+                                }
+                            },
+                            layout: {
+                                padding: 20
+                            }
+                        }
+                    });
+                    
+                    statusText.textContent = 'DONE';
+                } else {
+                    throw new Error(data.error || 'Unknown error occurred');
+                }
+
+            } catch (error) {
+                console.error('Failed to fetch data:', error);
+                statusText.textContent = 'ERR';
+                statusText.className = 'text-glow-red';
+            } finally {
+                // Restore UI state
+                btnRun.disabled = false;
+                btnRun.classList.remove('opacity-50');
+                if (chartCanvas) chartCanvas.style.opacity = '1';
+                loader.classList.add('hidden');
+            }
+        });
+        
+        // Auto-run on load
+        setTimeout(() => btnRun.click(), 1000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinSentinel // AUTH</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        
+        :root {
+            --neon-green: #00ff66;
+            --bg-black: #000000;
+            --glow: 0 0 5px var(--neon-green), 0 0 10px var(--neon-green);
+            --glow-red: 0 0 5px #ff0055, 0 0 10px #ff0055;
+            --neon-red: #ff0055;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-black);
+            color: var(--neon-green);
+            font-family: 'VT323', monospace;
+            text-transform: uppercase;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Scanline CRT Effect */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                to bottom,
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        
+        @keyframes flicker {
+            0% { opacity: 0.95; }
+            5% { opacity: 0.85; }
+            10% { opacity: 0.95; }
+            15% { opacity: 1; }
+            100% { opacity: 1; }
+        }
+        body {
+            animation: flicker 0.15s infinite;
+        }
+
+        .text-glow {
+            text-shadow: var(--glow);
+        }
+        .text-glow-red {
+            color: var(--neon-red);
+            text-shadow: var(--glow-red);
+        }
+        .border-glow {
+            border-color: var(--neon-green);
+            box-shadow: 0 0 10px rgba(0, 51, 17, 0.5) inset, 0 0 10px rgba(0, 51, 17, 0.5);
+        }
+        
+        .login-box {
+            border: 1px solid var(--neon-green);
+            background-color: rgba(0, 51, 17, 0.1);
+            padding: 40px;
+            width: 500px;
+            max-width: 90%;
+        }
+
+        input {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid var(--neon-green);
+            color: var(--neon-green);
+            font-family: 'VT323', monospace;
+            font-size: 1.5rem;
+            width: 100%;
+            padding: 5px 0;
+            outline: none;
+            text-transform: uppercase;
+            box-shadow: 0 2px 5px -2px var(--neon-green);
+        }
+        
+        input:focus {
+            border-bottom: 2px solid #fff;
+            box-shadow: 0 2px 5px -2px #fff;
+        }
+
+        input::placeholder {
+            color: rgba(0, 255, 102, 0.3);
+        }
+
+        button {
+            border: 1px solid var(--neon-green);
+            background: transparent;
+            color: var(--neon-green);
+            font-family: 'VT323', monospace;
+            font-size: 1.5rem;
+            padding: 10px 20px;
+            width: 100%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background-color: var(--neon-green);
+            color: var(--bg-black);
+            box-shadow: var(--glow);
+        }
+        
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 1.2em;
+            background-color: var(--neon-green);
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+            margin-left: 5px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-box z-10 relative border-glow text-glow">
+        <div class="text-3xl mb-6 border-b border-green-500 pb-2">AUTHENTICATION_REQ<span class="cursor"></span></div>
+        
+        {% if error %}
+        <div class="text-glow-red text-2xl mb-4 blink-err">>> {{ error }}</div>
+        {% endif %}
+
+        <form action="/login" method="POST">
+            <button type="submit" class="text-glow border-glow text-3xl font-bold py-8 px-12 mt-8 animate-pulse hover:bg-[#00ff66] hover:text-black transition-colors" style="border-color: var(--neon-green); box-shadow: var(--glow); text-shadow: var(--glow);">
+                [ INITIATE SYSTEM OVERRIDE ]
+            </button>
+        </form>
+    </div>
+    <script>
+        // Optional blink for error
+        if (document.querySelector('.blink-err')) {
+            setInterval(() => {
+                const el = document.querySelector('.blink-err');
+                el.style.opacity = el.style.opacity === '0' ? '1' : '0';
+            }, 500);
+        }
+    </script>
+</body>
+</html>

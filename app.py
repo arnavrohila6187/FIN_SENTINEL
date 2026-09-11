@@ -1,73 +1,97 @@
-import os
-import tempfile
 import pandas as pd
-import networkx as nx
-from flask import Flask, render_template, request, jsonify
-from pyvis.network import Network
+import os
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
+app.secret_key = 'hackathon_key'
 
-# Mock Data Generator (Reusing logic for demonstration)
+# Load Data from CSV
+DATA_PATH = os.path.join(os.path.dirname(__file__), 'data', 'transactions.csv')
+
 def load_transaction_data() -> pd.DataFrame:
-    data = [
-        {"source": "ACC_101", "target": "ACC_102", "amount": 150000, "risk_score": 88, "type": "WIRE"},
-        {"source": "ACC_102", "target": "ACC_103", "amount": 145000, "risk_score": 92, "type": "WIRE"},
-        {"source": "ACC_103", "target": "ACC_101", "amount": 140000, "risk_score": 95, "type": "CIRCULAR"},
-        {"source": "ACC_104", "target": "ACC_105", "amount": 12000, "risk_score": 25, "type": "ACH"},
-        {"source": "ACC_105", "target": "ACC_106", "amount": 8500, "risk_score": 15, "type": "ACH"},
-        {"source": "ACC_107", "target": "ACC_102", "amount": 500000, "risk_score": 99, "type": "HIGH_RISK_SHELL"},
-        {"source": "ACC_108", "target": "ACC_102", "amount": 480000, "risk_score": 97, "type": "HIGH_RISK_SHELL"},
-    ]
-    return pd.DataFrame(data)
+    if os.path.exists(DATA_PATH):
+        try:
+            return pd.read_csv(DATA_PATH)
+        except Exception as e:
+            print(f"Error loading CSV: {e}")
+    # Fallback to empty dataframe with expected columns
+    return pd.DataFrame(columns=['txn_id', 'sender_id', 'receiver_id', 'amount_inr', 'timestamp', 'device_fingerprint'])
 
 df_global = load_transaction_data()
 
+# Calculate risk level column upfront for efficiency
+if not df_global.empty:
+    def calculate_risk(row):
+        # MULE_DEV in fingerprint is high risk
+        if pd.notna(row.get('device_fingerprint')) and str(row['device_fingerprint']).startswith('MULE_DEV'):
+            return 'High'
+        amount = row.get('amount_inr', 0)
+        try:
+            amount = float(amount)
+        except:
+            amount = 0
+        if amount > 100000:
+            return 'High'
+        elif amount > 50000:
+            return 'Medium'
+        else:
+            return 'Low'
+            
+    df_global['risk_level'] = df_global.apply(calculate_risk, axis=1)
+else:
+    df_global['risk_level'] = []
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('home.html')
 
-@app.route('/api/graph', methods=['POST'])
-def api_graph():
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        session['logged_in'] = True
+        return redirect(url_for('dashboard'))
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('index'))
+
+@app.route('/dashboard')
+def dashboard():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    return render_template('dashboard.html')
+
+@app.route('/api/data', methods=['POST'])
+def api_data():
     try:
-        data = request.get_json()
-        min_risk = float(data.get('min_risk', 0))
+        # Check if empty
+        if df_global.empty:
+            high_risk = 0
+            medium_risk = 0
+            low_risk = 0
+            total = 0
+        else:
+            high_risk = len(df_global[df_global['risk_level'] == 'High'])
+            medium_risk = len(df_global[df_global['risk_level'] == 'Medium'])
+            low_risk = len(df_global[df_global['risk_level'] == 'Low'])
+            total = len(df_global)
 
-        # Filter dataset
-        filtered_df = df_global[df_global['risk_score'] >= min_risk]
-
-        # Build NetworkX Graph
-        G = nx.DiGraph()
-        for _, row in filtered_df.iterrows():
-            G.add_edge(row["source"], row["target"], weight=row["amount"], risk=row["risk_score"])
-
-        # Detect rings (Mock metric logic based on original design)
-        # Assuming cycles detection logic is simple for demo purpose
-        cycles = list(nx.simple_cycles(G))
-        rings_detected = len([c for c in cycles if len(c) >= 3])
-
-        # PyVis Rendering
-        net = Network(height="100%", width="100%", bgcolor="#0d1117", font_color="#00ff66", directed=True)
-        # Remove navigation buttons for a cleaner iframe integration
-        net.toggle_physics(True)
-        net.from_nx(G)
-
-        # Temporary file save for HTML extraction
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".html", dir=tempfile.gettempdir()) as tmp_file:
-            net.save_graph(tmp_file.name)
-            with open(tmp_file.name, 'r', encoding='utf-8') as f:
-                html_bytes = f.read()
-            os.unlink(tmp_file.name)
-
-        # Metrics Payload
         metrics = {
-            "total": len(df_global),
-            "flagged": len(filtered_df),
-            "rings": rings_detected
+            "total": total,
+            "high_risk": high_risk,
+            "medium_risk": medium_risk,
+            "low_risk": low_risk,
+            "flagged": high_risk + medium_risk
         }
 
         return jsonify({
             "status": "success",
-            "html": html_bytes,
+            "chart_data": {
+                "labels": ["High Risk", "Medium Risk", "Low Risk"],
+                "values": [high_risk, medium_risk, low_risk]
+            },
             "metrics": metrics
         })
 
@@ -79,4 +103,4 @@ def api_graph():
 
 if __name__ == '__main__':
     # Run locally if executed directly
-    app.run(host='0.0.0.0', port=8501, debug=True)
+    app.run(host='0.0.0.0', port=8501, debug=True, use_reloader=False)

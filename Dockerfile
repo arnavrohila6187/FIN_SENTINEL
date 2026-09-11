@@ -5,7 +5,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
-    software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -16,4 +15,4 @@ COPY . .
 
 EXPOSE 8501
 
-ENTRYPOINT ["gunicorn", "-b", "0.0.0.0:8501", "app:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:8501", "app:app"]

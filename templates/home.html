@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinSentinel // BOOT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        
+        :root {
+            --neon-green: #00ff66;
+            --bg-black: #000000;
+            --glow: 0 0 5px var(--neon-green), 0 0 10px var(--neon-green);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-black);
+            color: var(--neon-green);
+            font-family: 'VT323', monospace;
+            text-transform: uppercase;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Scanline CRT Effect */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                to bottom,
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        
+        @keyframes flicker {
+            0% { opacity: 0.95; }
+            5% { opacity: 0.85; }
+            10% { opacity: 0.95; }
+            15% { opacity: 1; }
+            100% { opacity: 1; }
+        }
+        body {
+            animation: flicker 0.15s infinite;
+        }
+
+        .text-glow {
+            text-shadow: var(--glow);
+        }
+        
+        /* Blinking Cursor */
+        .cursor {
+            display: inline-block;
+            width: 15px;
+            height: 1.2em;
+            background-color: var(--neon-green);
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+            margin-left: 10px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        
+        pre {
+            font-size: 1.2rem;
+            line-height: 1.2;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        a.btn {
+            border: 1px solid var(--neon-green);
+            padding: 10px 20px;
+            text-decoration: none;
+            color: var(--neon-green);
+            font-size: 1.5rem;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        a.btn:hover {
+            background-color: var(--neon-green);
+            color: var(--bg-black);
+            box-shadow: var(--glow);
+        }
+    </style>
+</head>
+<body>
+    <div class="flex flex-col items-center text-glow z-10 relative">
+        <pre>
+  ______ _____ _   _  _____ ______ _   _ _______ _____ _   _ ______ _      
+ |  ____|_   _| \ | |/ ____|  ____| \ | |__   __|_   _| \ | |  ____| |     
+ | |__    | | |  \| | (___ | |__  |  \| |  | |    | | |  \| | |__  | |     
+ |  __|   | | | . ` |\___ \|  __| | . ` |  | |    | | | . ` |  __| | |     
+ | |     _| |_| |\  |____) | |____| |\  |  | |   _| |_| |\  | |____| |____ 
+ |_|    |_____|_| \_|_____/|______|_| \_|  |_|  |_____|_| \_|______|______|
+        </pre>
+        <div class="text-3xl mb-8 text-glow">SYSTEM: ONLINE<span class="cursor"></span></div>
+        <a href="/login" class="btn text-glow">[ INITIATE ADMIN LOGIN ]</a>
+    </div>
+</body>
+</html>
